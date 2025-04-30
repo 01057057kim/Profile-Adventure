@@ -216,13 +216,13 @@ let steeringAngle = 0;
 const maxSteeringAngle = Math.PI / 50;
 
 const mtlLoader = new MTLLoader(loadingManager);
-mtlLoader.setPath('./src/assets/models/car/');
+mtlLoader.setPath('/Profile-Adventure//assets/models/car/');
 mtlLoader.load('offroadcar.mtl', (materials) => {
   materials.preload();
 
   const objLoader = new OBJLoader(loadingManager);
   objLoader.setMaterials(materials);
-  objLoader.setPath('./src/assets/models/car/');
+  objLoader.setPath('/Profile-Adventure//assets/models/car/');
   objLoader.load('offroadcar.obj', (carModel) => {
     carModel.traverse((child) => {
       if (child instanceof THREE.Mesh) {
