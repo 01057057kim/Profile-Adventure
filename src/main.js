@@ -6,6 +6,7 @@ import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 
 let wheelFL, wheelFR, wheelBL, wheelBR;
 let wheelFLCube, wheelFRCube, wheelBLCube, wheelBRCube;
+let terrain, terrainCollider;
 
 const wheelOffsets = {
   FL: { x: -1.4, y: -0.4, z: -1.9 },
@@ -78,7 +79,6 @@ controls.update();
 /////////////////////////////////////////////////////////////////////////////////
 
 // CAMERA
-let cameraSpeed = 0.2;
 camera.position.z = 5;
 camera.position.y = 15;
 camera.rotation.x = 0;
@@ -87,11 +87,6 @@ camera.lookAt(0, 11, 0);
 /////////////////////////////////////////////////////////////////////////////////
 // LIGHT
 
-/** 
-const light = new THREE.DirectionalLight(0xffffff, 1);
-light.position.set(5, 10, 5);
-scene.add(light);
-*/
 const sunGeometry = new THREE.SphereGeometry(3, 32, 32);
 const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xE1C500 });
 const sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
@@ -119,28 +114,38 @@ const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
 scene.add(ambientLight);
 
 /////////////////////////////////////////////////////////////////////////////////
-// FLAT PLANE / MAP
-const mapWidth = 100;
-const mapLength = 100;
+// TERRAIN 
+const gltfLoader = new GLTFLoader(loadingManager);
+gltfLoader.load('/Profile-Adventure/models/terrain.glb', (gltf) => {
+  terrain = gltf.scene;
 
-const mapGeometry = new THREE.PlaneGeometry(mapWidth, mapLength);
-const mapMaterial = new THREE.MeshStandardMaterial({
-  color: 0x01E04C,
-  side: THREE.DoubleSide,
-  roughness: 0.8
+  terrain.scale.set(35, 10, 35);
+  terrain.position.y = -1;
+
+  terrain.traverse((child) => {
+    if (child instanceof THREE.Mesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+
+      if (!terrainCollider) {
+        terrainCollider = child;
+      }
+    }
+  });
+
+  scene.add(terrain);
+  console.log('Terrain loaded successfully');
 });
-const map = new THREE.Mesh(mapGeometry, mapMaterial);
-map.rotation.x = Math.PI / 2;
-map.position.y = -1;
-map.receiveShadow = true;
-scene.add(map);
 
 const borderWidth = 2;
-const borderHeight = 7;
+const borderHeight = 20;
 const edgeMaterial = new THREE.MeshStandardMaterial({
   color: 0xDEDCD8,
   roughness: 0.7
 });
+
+const mapWidth = 500;
+const mapLength = 500;
 
 const northGeometry = new THREE.BoxGeometry(mapWidth + borderWidth * 2, borderHeight, borderWidth);
 const northEdge = new THREE.Mesh(northGeometry, edgeMaterial);
@@ -196,9 +201,9 @@ function createWheelCube(color = 0xff0000) {
 }
 
 wheelFLCube = createWheelCube(0xff0000);
-wheelFRCube = createWheelCube(0x00ff00); 
+wheelFRCube = createWheelCube(0x00ff00);
 wheelBLCube = createWheelCube(0x0000ff);
-wheelBRCube = createWheelCube(0xffff00); 
+wheelBRCube = createWheelCube(0xffff00);
 
 car.add(wheelFLCube);
 car.add(wheelFRCube);
@@ -214,6 +219,11 @@ const turnSpeed = 0.03;
 let frontWheelRotation = 0;
 let steeringAngle = 0;
 const maxSteeringAngle = Math.PI / 50;
+
+
+const raycaster = new THREE.Raycaster();
+const rayDirection = new THREE.Vector3(0, -1, 0);
+const carHeight = 1.5;
 
 const mtlLoader = new MTLLoader(loadingManager);
 mtlLoader.setPath('/Profile-Adventure/models/');
@@ -232,7 +242,7 @@ mtlLoader.load('offroadcar.mtl', (materials) => {
         if (child.name === 'wheelfl_Cylinder.030') {
           wheelFL = child;
           console.log('Found front left wheel');
-          
+
           wheelFLCube.position.copy(child.position.clone().add(new THREE.Vector3(
             wheelOffsets.FL.x, wheelOffsets.FL.y, wheelOffsets.FL.z
           )));
@@ -240,7 +250,7 @@ mtlLoader.load('offroadcar.mtl', (materials) => {
         } else if (child.name === 'wheelfr_Cylinder.002') {
           wheelFR = child;
           console.log('Found front right wheel');
-          
+
           wheelFRCube.position.copy(child.position.clone().add(new THREE.Vector3(
             wheelOffsets.FR.x, wheelOffsets.FR.y, wheelOffsets.FR.z
           )));
@@ -248,7 +258,7 @@ mtlLoader.load('offroadcar.mtl', (materials) => {
         } else if (child.name === 'wheelbl_Cylinder.001') {
           wheelBL = child;
           console.log('Found back left wheel');
-          
+
           wheelBLCube.position.copy(child.position.clone().add(new THREE.Vector3(
             wheelOffsets.BL.x, wheelOffsets.BL.y, wheelOffsets.BL.z
           )));
@@ -256,7 +266,7 @@ mtlLoader.load('offroadcar.mtl', (materials) => {
         } else if (child.name === 'wheelbr_Cylinder.003') {
           wheelBR = child;
           console.log('Found back right wheel');
-          
+
           wheelBRCube.position.copy(child.position.clone().add(new THREE.Vector3(
             wheelOffsets.BR.x, wheelOffsets.BR.y, wheelOffsets.BR.z
           )));
@@ -269,7 +279,7 @@ mtlLoader.load('offroadcar.mtl', (materials) => {
     carModel.position.y = 0;
     carModel.rotation.y = Math.PI * 1.5;
     car.add(carModel);
-    
+
     updateWheelPositions();
   });
 });
@@ -280,19 +290,19 @@ function updateWheelPositions() {
       wheelOffsets.FL.x, wheelOffsets.FL.y, wheelOffsets.FL.z
     )));
   }
-  
+
   if (wheelFR && wheelFRCube) {
     wheelFRCube.position.copy(wheelFR.position.clone().add(new THREE.Vector3(
       wheelOffsets.FR.x, wheelOffsets.FR.y, wheelOffsets.FR.z
     )));
   }
-  
+
   if (wheelBL && wheelBLCube) {
     wheelBLCube.position.copy(wheelBL.position.clone().add(new THREE.Vector3(
       wheelOffsets.BL.x, wheelOffsets.BL.y, wheelOffsets.BL.z
     )));
   }
-  
+
   if (wheelBR && wheelBRCube) {
     wheelBRCube.position.copy(wheelBR.position.clone().add(new THREE.Vector3(
       wheelOffsets.BR.x, wheelOffsets.BR.y, wheelOffsets.BR.z
@@ -300,12 +310,11 @@ function updateWheelPositions() {
   }
 }
 
-// NEED FIX WHEElS ROTATE
+/////////////
 function rotateWheels() {
   if (!wheelFL || !wheelFR || !wheelBL || !wheelBR) return;
-  
+
   wheelRotationSpeed = carSpeed * 5;
-  
 
   if (keys['a'] || keys['ArrowLeft']) {
     steeringAngle = Math.min(steeringAngle + 0.03, maxSteeringAngle);
@@ -320,6 +329,59 @@ function rotateWheels() {
   }
   wheelFL.rotation.y = steeringAngle;
   wheelFR.rotation.y = steeringAngle;
+}
+
+
+function adjustCarToTerrain() {
+  if (!terrainCollider) return;
+
+  const wheels = [
+    { position: new THREE.Vector3(), name: 'FL' },
+    { position: new THREE.Vector3(), name: 'FR' },
+    { position: new THREE.Vector3(), name: 'BL' },
+    { position: new THREE.Vector3(), name: 'BR' }
+  ];
+
+  if (wheelFLCube) {
+    wheelFLCube.getWorldPosition(wheels[0].position);
+  }
+  if (wheelFRCube) {
+    wheelFRCube.getWorldPosition(wheels[1].position);
+  }
+  if (wheelBLCube) {
+    wheelBLCube.getWorldPosition(wheels[2].position);
+  }
+  if (wheelBRCube) {
+    wheelBRCube.getWorldPosition(wheels[3].position);
+  }
+
+  let highestPoint = -Infinity;
+  let carTilt = new THREE.Vector3(0, 0, 0);
+  let validHits = 0;
+
+  wheels.forEach((wheel) => {
+    raycaster.set(
+      new THREE.Vector3(wheel.position.x, wheel.position.y + 20, wheel.position.z),
+      rayDirection
+    );
+
+    const intersects = raycaster.intersectObject(terrainCollider, true);
+
+    if (intersects.length > 0) {
+      const heightAtWheel = intersects[0].point.y;
+
+      if (heightAtWheel > highestPoint) {
+        highestPoint = heightAtWheel;
+      }
+
+      validHits++;
+    }
+  });
+
+  if (validHits > 0) {
+    car.position.y = highestPoint + carHeight;
+
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -380,6 +442,8 @@ function animate() {
     car.position.x = Math.max(-mapWidth / 2 + carHalfSize, Math.min(mapWidth / 2 - carHalfSize, car.position.x));
     car.position.z = Math.max(-mapLength / 2 + carHalfSize, Math.min(mapLength / 2 - carHalfSize, car.position.z));
 
+    adjustCarToTerrain();
+
     const targetX = car.position.x;
     const targetY = car.position.y + cameraOffsetY;
     const targetZ = car.position.z + cameraOffsetZ * Math.cos(car.rotation.y);
@@ -390,7 +454,7 @@ function animate() {
     camera.position.z = camera.position.z + (targetZ - camera.position.z) * cameraLerpFactor;
 
     camera.lookAt(car.position.x, car.position.y + 1, car.position.z);
-    
+
     rotateWheels();
   }
 

@@ -8,7 +8,7 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         {
-          src: 'src/assets/models/car/*',
+          src: 'src/assets/models/terrain/*',
           dest: 'models'
         }
       ]
