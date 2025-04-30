@@ -1,7 +1,22 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
 
+let wheelFL, wheelFR, wheelBL, wheelBR;
+let wheelFLCube, wheelFRCube, wheelBLCube, wheelBRCube;
+
+const wheelOffsets = {
+  FL: { x: -1.4, y: -0.4, z: -1.9 },
+  FR: { x: 1.4, y: -0.4, z: -1.9 },
+  BL: { x: -1.4, y: -0.4, z: 1.3 },
+  BR: { x: 1.4, y: -0.4, z: 1.3 }
+};
+
+const wheelRotationAxis = new THREE.Vector3(1, 0, 0);
+let wheelRotationSpeed = 0;
+const maxWheelRotationSpeed = 0.2;
 
 /////////////////////////////////////////////////////////////////////////////////
 // LOADING
@@ -55,7 +70,7 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 // FOR DEBUG
 let useOrbitControls = false;
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; 
+controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.target.set(0, 10, 0);
 controls.update();
@@ -67,7 +82,7 @@ let cameraSpeed = 0.2;
 camera.position.z = 5;
 camera.position.y = 15;
 camera.rotation.x = 0;
-camera.lookAt(0, 10, 0);
+camera.lookAt(0, 11, 0);
 
 /////////////////////////////////////////////////////////////////////////////////
 // LIGHT
@@ -80,7 +95,7 @@ scene.add(light);
 const sunGeometry = new THREE.SphereGeometry(3, 32, 32);
 const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xE1C500 });
 const sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
-sunMesh.position.set(20, 10, 10);
+sunMesh.position.set(-50, 40, -50);
 scene.add(sunMesh);
 
 const sunLight = new THREE.DirectionalLight(0xffffff, 2);
@@ -90,10 +105,15 @@ scene.add(sunLight.target);
 scene.add(sunLight);
 
 sunLight.castShadow = true;
-sunLight.shadow.mapSize.width = 2048;
-sunLight.shadow.mapSize.height = 2048;
+sunLight.shadow.mapSize.width = 4096;
+sunLight.shadow.mapSize.height = 4096;
 sunLight.shadow.camera.near = 10;
 sunLight.shadow.camera.far = 200;
+sunLight.shadow.camera.left = -70;
+sunLight.shadow.camera.right = 70;
+sunLight.shadow.camera.top = 70;
+sunLight.shadow.camera.bottom = -70;
+sunLight.shadow.bias = -0.0005
 
 const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
 scene.add(ambientLight);
@@ -146,7 +166,6 @@ westEdge.position.set(-mapWidth / 2 - borderWidth / 2, -1 + borderHeight / 2, 0)
 westEdge.castShadow = true;
 scene.add(westEdge);
 
-
 /////////////////////////////////////////////////////////////////////////////////
 let keys = {};
 
@@ -161,14 +180,147 @@ window.addEventListener('keyup', (event) => {
 window.addEventListener('keydown', (e) => {
   if (e.key === 'q') useOrbitControls = !useOrbitControls;
 });
+
 /////////////////////////////////////////////////////////////////////////////////
 // CAR
-const cubeGeometry = new THREE.BoxGeometry(3, 3, 3);
-const cubeMaterial = new THREE.MeshStandardMaterial({ color: 0x011BE0 });
-const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-cube.position.set(10, 0.5, 2);
-cube.castShadow = true;
-scene.add(cube);
+const car = new THREE.Group();
+car.position.set(10, 0, 2);
+car.rotation.y = Math.PI;
+car.castShadow = true;
+scene.add(car);
+
+function createWheelCube(color = 0xff0000) {
+  const cubeGeometry = new THREE.BoxGeometry(0.2, 0.2, 0.2);
+  const cubeMaterial = new THREE.MeshBasicMaterial({ color: color });
+  return new THREE.Mesh(cubeGeometry, cubeMaterial);
+}
+
+wheelFLCube = createWheelCube(0xff0000);
+wheelFRCube = createWheelCube(0x00ff00); 
+wheelBLCube = createWheelCube(0x0000ff);
+wheelBRCube = createWheelCube(0xffff00); 
+
+car.add(wheelFLCube);
+car.add(wheelFRCube);
+car.add(wheelBLCube);
+car.add(wheelBRCube);
+
+let carSpeed = 0;
+const maxSpeed = 0.5;
+const acceleration = 0.01;
+const deceleration = 0.005;
+const turnSpeed = 0.03;
+
+let frontWheelRotation = 0;
+let steeringAngle = 0;
+const maxSteeringAngle = Math.PI / 50;
+
+const mtlLoader = new MTLLoader(loadingManager);
+mtlLoader.setPath('./src/assets/models/car/');
+mtlLoader.load('offroadcar.mtl', (materials) => {
+  materials.preload();
+
+  const objLoader = new OBJLoader(loadingManager);
+  objLoader.setMaterials(materials);
+  objLoader.setPath('./src/assets/models/car/');
+  objLoader.load('offroadcar.obj', (carModel) => {
+    carModel.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        if (child.name === 'wheelfl_Cylinder.030') {
+          wheelFL = child;
+          console.log('Found front left wheel');
+          
+          wheelFLCube.position.copy(child.position.clone().add(new THREE.Vector3(
+            wheelOffsets.FL.x, wheelOffsets.FL.y, wheelOffsets.FL.z
+          )));
+          console.log('Front Left Wheel Position:', child.position);
+        } else if (child.name === 'wheelfr_Cylinder.002') {
+          wheelFR = child;
+          console.log('Found front right wheel');
+          
+          wheelFRCube.position.copy(child.position.clone().add(new THREE.Vector3(
+            wheelOffsets.FR.x, wheelOffsets.FR.y, wheelOffsets.FR.z
+          )));
+          console.log('Front Right Wheel Position:', child.position);
+        } else if (child.name === 'wheelbl_Cylinder.001') {
+          wheelBL = child;
+          console.log('Found back left wheel');
+          
+          wheelBLCube.position.copy(child.position.clone().add(new THREE.Vector3(
+            wheelOffsets.BL.x, wheelOffsets.BL.y, wheelOffsets.BL.z
+          )));
+          console.log('Back Left Wheel Position:', child.position);
+        } else if (child.name === 'wheelbr_Cylinder.003') {
+          wheelBR = child;
+          console.log('Found back right wheel');
+          
+          wheelBRCube.position.copy(child.position.clone().add(new THREE.Vector3(
+            wheelOffsets.BR.x, wheelOffsets.BR.y, wheelOffsets.BR.z
+          )));
+          console.log('Back Right Wheel Position:', child.position);
+        }
+      }
+    });
+
+    carModel.scale.set(1, 1, 1);
+    carModel.position.y = 0;
+    carModel.rotation.y = Math.PI * 1.5;
+    car.add(carModel);
+    
+    updateWheelPositions();
+  });
+});
+
+function updateWheelPositions() {
+  if (wheelFL && wheelFLCube) {
+    wheelFLCube.position.copy(wheelFL.position.clone().add(new THREE.Vector3(
+      wheelOffsets.FL.x, wheelOffsets.FL.y, wheelOffsets.FL.z
+    )));
+  }
+  
+  if (wheelFR && wheelFRCube) {
+    wheelFRCube.position.copy(wheelFR.position.clone().add(new THREE.Vector3(
+      wheelOffsets.FR.x, wheelOffsets.FR.y, wheelOffsets.FR.z
+    )));
+  }
+  
+  if (wheelBL && wheelBLCube) {
+    wheelBLCube.position.copy(wheelBL.position.clone().add(new THREE.Vector3(
+      wheelOffsets.BL.x, wheelOffsets.BL.y, wheelOffsets.BL.z
+    )));
+  }
+  
+  if (wheelBR && wheelBRCube) {
+    wheelBRCube.position.copy(wheelBR.position.clone().add(new THREE.Vector3(
+      wheelOffsets.BR.x, wheelOffsets.BR.y, wheelOffsets.BR.z
+    )));
+  }
+}
+
+// NEED FIX WHEElS ROTATE
+function rotateWheels() {
+  if (!wheelFL || !wheelFR || !wheelBL || !wheelBR) return;
+  
+  wheelRotationSpeed = carSpeed * 5;
+  
+
+  if (keys['a'] || keys['ArrowLeft']) {
+    steeringAngle = Math.min(steeringAngle + 0.03, maxSteeringAngle);
+  } else if (keys['d'] || keys['ArrowRight']) {
+    steeringAngle = Math.max(steeringAngle - 0.03, -maxSteeringAngle);
+  } else {
+    if (steeringAngle > 0) {
+      steeringAngle = Math.max(steeringAngle - 0.01, 0);
+    } else if (steeringAngle < 0) {
+      steeringAngle = Math.min(steeringAngle + 0.01, 0);
+    }
+  }
+  wheelFL.rotation.y = steeringAngle;
+  wheelFR.rotation.y = steeringAngle;
+}
 
 /////////////////////////////////////////////////////////////////////////////////
 // HELPER
@@ -185,6 +337,12 @@ function createAxisHelper() {
 createAxisHelper();
 
 /////////////////////////////////////////////////////////////////////////////////
+// camera for following the car
+let cameraOffsetY = 10;
+let cameraOffsetZ = 10;
+let cameraLerpFactor = 0.1;
+
+/////////////////////////////////////////////////////////////////////////////////
 // window resize
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -194,21 +352,54 @@ window.addEventListener('resize', () => {
 
 function animate() {
   if (!useOrbitControls) {
-    if (keys['w'] || keys['ArrowUp']) camera.position.z -= cameraSpeed;
-    if (keys['s'] || keys['ArrowDown']) camera.position.z += cameraSpeed;
-    if (keys['a'] || keys['ArrowLeft']) camera.position.x -= cameraSpeed;
-    if (keys['d'] || keys['ArrowRight']) camera.position.x += cameraSpeed;
+    if (keys['w'] || keys['ArrowUp']) {
+      carSpeed = Math.min(carSpeed + acceleration, maxSpeed);
+    } else if (keys['s'] || keys['ArrowDown']) {
+      carSpeed = Math.max(carSpeed - acceleration, -maxSpeed / 1.5);
+    } else {
+      if (carSpeed > 0) {
+        carSpeed = Math.max(carSpeed - deceleration, 0);
+      } else if (carSpeed < 0) {
+        carSpeed = Math.min(carSpeed + deceleration, 0);
+      }
+    }
+
+    if (Math.abs(carSpeed) > 0.01) {
+      if (keys['a'] || keys['ArrowLeft']) {
+        car.rotation.y += turnSpeed * (carSpeed > 0 ? 1 : -1);
+      }
+      if (keys['d'] || keys['ArrowRight']) {
+        car.rotation.y -= turnSpeed * (carSpeed > 0 ? 1 : -1);
+      }
+    }
+
+    car.position.x -= Math.sin(car.rotation.y) * carSpeed;
+    car.position.z -= Math.cos(car.rotation.y) * carSpeed;
+
+    const carHalfSize = 2.5;
+    car.position.x = Math.max(-mapWidth / 2 + carHalfSize, Math.min(mapWidth / 2 - carHalfSize, car.position.x));
+    car.position.z = Math.max(-mapLength / 2 + carHalfSize, Math.min(mapLength / 2 - carHalfSize, car.position.z));
+
+    const targetX = car.position.x;
+    const targetY = car.position.y + cameraOffsetY;
+    const targetZ = car.position.z + cameraOffsetZ * Math.cos(car.rotation.y);
+    const targetXOffset = cameraOffsetZ * Math.sin(car.rotation.y);
+
+    camera.position.x = camera.position.x + (targetX + targetXOffset - camera.position.x) * cameraLerpFactor;
+    camera.position.y = camera.position.y + (targetY - camera.position.y) * cameraLerpFactor;
+    camera.position.z = camera.position.z + (targetZ - camera.position.z) * cameraLerpFactor;
+
+    camera.lookAt(car.position.x, car.position.y + 1, car.position.z);
+    
+    rotateWheels();
   }
 
   controls.enabled = useOrbitControls;
   if (useOrbitControls) controls.update();
 
-  const boundaryBuffer = 5;
-  camera.position.x = Math.max(-mapWidth / 2 + boundaryBuffer, Math.min(mapWidth / 2 - boundaryBuffer, camera.position.x));
-  camera.position.z = Math.max(-mapLength / 2 + boundaryBuffer, Math.min(mapLength / 2 - boundaryBuffer, camera.position.z));
-
   renderer.render(scene, camera);
 }
+
 
 /////////////////////////////////////////////////////////////////////////////////
 // LOAD TEXTURE
