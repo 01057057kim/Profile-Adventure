@@ -8,7 +8,7 @@ export default defineConfig({
     viteStaticCopy({
       targets: [
         {
-          src: 'src/assets/models/terrain/*',
+          src: 'src/assets/models/*',
           dest: 'models'
         }
       ]

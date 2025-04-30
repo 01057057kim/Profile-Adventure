@@ -116,7 +116,7 @@ scene.add(ambientLight);
 /////////////////////////////////////////////////////////////////////////////////
 // TERRAIN 
 const gltfLoader = new GLTFLoader(loadingManager);
-gltfLoader.load('/Profile-Adventure/models/terrain.glb', (gltf) => {
+gltfLoader.load('./src/assets/models/terrain.glb', (gltf) => {
   terrain = gltf.scene;
 
   terrain.scale.set(35, 10, 35);
